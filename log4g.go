@@ -43,10 +43,10 @@ var (
 	ErrLogNameSpaceNotSet = errors.New("log service name must be set")
 
 	writeConsole bool
-	infoLog      io.WriteCloser
-	errorLog     io.WriteCloser
-	slowLog      io.WriteCloser
-	statLog      io.WriteCloser
+	InfoLog      io.WriteCloser
+	ErrorLog     io.WriteCloser
+	SlowLog      io.WriteCloser
+	StatLog      io.WriteCloser
 	stackLog     *LessLogger
 
 	once        sync.Once
@@ -128,26 +128,26 @@ func Close() error {
 
 	atomic.StoreUint32(&initialized, 0)
 
-	if infoLog != nil {
-		if err := infoLog.Close(); err != nil {
+	if InfoLog != nil {
+		if err := InfoLog.Close(); err != nil {
 			return err
 		}
 	}
 
-	if errorLog != nil {
-		if err := errorLog.Close(); err != nil {
+	if ErrorLog != nil {
+		if err := ErrorLog.Close(); err != nil {
 			return err
 		}
 	}
 
-	if slowLog != nil {
-		if err := slowLog.Close(); err != nil {
+	if SlowLog != nil {
+		if err := SlowLog.Close(); err != nil {
 			return err
 		}
 	}
 
-	if statLog != nil {
-		if err := statLog.Close(); err != nil {
+	if StatLog != nil {
+		if err := StatLog.Close(); err != nil {
 			return err
 		}
 	}
@@ -233,7 +233,7 @@ func errorSync(msg string, callDepth int) {
 	if atomic.LoadUint32(&initialized) == 0 {
 		outputError(nil, msg, callDepth)
 	} else {
-		outputError(errorLog, msg, callDepth)
+		outputError(ErrorLog, msg, callDepth)
 	}
 }
 
@@ -266,7 +266,7 @@ func infoSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
 		output(nil, msg)
 	} else {
-		output(infoLog, msg)
+		output(InfoLog, msg)
 	}
 }
 
@@ -295,10 +295,10 @@ func outputError(writer io.Writer, msg string, callDepth int) {
 func setupWithConsole() {
 	writeConsole = true
 	once.Do(func() {
-		infoLog = NewLogWriter(log.New(os.Stdout, infoPrefix, flags))
-		errorLog = NewLogWriter(log.New(os.Stderr, errorPrefix, flags))
-		slowLog = NewLogWriter(log.New(os.Stderr, slowPrefix, flags))
-		statLog = infoLog
+		InfoLog = NewLogWriter(log.New(os.Stdout, infoPrefix, flags))
+		ErrorLog = NewLogWriter(log.New(os.Stderr, errorPrefix, flags))
+		SlowLog = NewLogWriter(log.New(os.Stderr, slowPrefix, flags))
+		StatLog = InfoLog
 		atomic.StoreUint32(&initialized, 1)
 	})
 }
@@ -327,19 +327,19 @@ func setupWithFiles(c Config) error {
 	once.Do(func() {
 		handleOptions(opts)
 
-		if infoLog, err = createOutput(accessFile); err != nil {
+		if InfoLog, err = createOutput(accessFile); err != nil {
 			return
 		}
 
-		if errorLog, err = createOutput(errorFile); err != nil {
+		if ErrorLog, err = createOutput(errorFile); err != nil {
 			return
 		}
 
-		if slowLog, err = createOutput(slowFile); err != nil {
+		if SlowLog, err = createOutput(slowFile); err != nil {
 			return
 		}
 
-		if statLog, err = createOutput(statFile); err != nil {
+		if StatLog, err = createOutput(statFile); err != nil {
 			return
 		}
 
@@ -365,7 +365,7 @@ func slowSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
 		output(nil, msg)
 	} else {
-		output(slowLog, msg)
+		output(SlowLog, msg)
 	}
 }
 
@@ -381,7 +381,7 @@ func statSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
 		output(nil, msg)
 	} else {
-		output(statLog, msg)
+		output(StatLog, msg)
 	}
 }
 
