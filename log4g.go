@@ -295,9 +295,9 @@ func outputError(writer io.Writer, msg string, callDepth int) {
 func setupWithConsole() {
 	writeConsole = true
 	once.Do(func() {
-		infoLog = newLogWriter(log.New(os.Stdout, infoPrefix, flags))
-		errorLog = newLogWriter(log.New(os.Stderr, errorPrefix, flags))
-		slowLog = newLogWriter(log.New(os.Stderr, slowPrefix, flags))
+		infoLog = NewLogWriter(log.New(os.Stdout, infoPrefix, flags))
+		errorLog = NewLogWriter(log.New(os.Stderr, errorPrefix, flags))
+		slowLog = NewLogWriter(log.New(os.Stderr, slowPrefix, flags))
 		statLog = infoLog
 		atomic.StoreUint32(&initialized, 1)
 	})
@@ -385,21 +385,21 @@ func statSync(msg string) {
 	}
 }
 
-type logWriter struct {
+type LogWriter struct {
 	logger *log.Logger
 }
 
-func newLogWriter(logger *log.Logger) logWriter {
-	return logWriter{
+func NewLogWriter(logger *log.Logger) LogWriter {
+	return LogWriter{
 		logger: logger,
 	}
 }
 
-func (lw logWriter) Close() error {
+func (lw LogWriter) Close() error {
 	return nil
 }
 
-func (lw logWriter) Write(data []byte) (int, error) {
+func (lw LogWriter) Write(data []byte) (int, error) {
 	lw.logger.Print(string(data))
 	return len(data), nil
 }
