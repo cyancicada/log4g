@@ -72,7 +72,6 @@ type (
 )
 
 func Init(c Config) {
-
 	if err := SetUp(c); err != nil {
 		log.Fatal(err)
 	}
