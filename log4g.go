@@ -24,17 +24,16 @@ const (
 	slowFilename   = "slow.log"
 	statFilename   = "stat.log"
 
-	consoleMode = "console"
-	varMode     = "var"
+	varMode = "var"
 
 	defaultHostName = "log4g"
 
 	infoPrefix          = "[INFO] "
 	errorPrefix         = "[ERROR] "
-	slowPrefix          = "[SLOW]"
+	slowPrefix          = "[SLOW] "
+	stackPrefix         = "[STACK] "
 	backupFileDelimiter = "-"
 	callerInnerDepth    = 5
-	flags               = 0x0
 )
 
 var (
@@ -88,8 +87,8 @@ func SetUp(c Config) error {
 	}
 }
 
-func AddTime(msg string) string {
-	now := []byte(time.Now().Format(TimeFormat))
+func AddTime(prefix, msg string) string {
+	now := []byte(prefix + time.Now().Format(TimeFormat))
 	msgBytes := []byte(msg)
 	buf := make([]byte, len(now)+1+len(msgBytes))
 	n := copy(buf, now)
@@ -99,9 +98,10 @@ func AddTime(msg string) string {
 	return string(buf)
 }
 
-func AddTimeAndCaller(msg string, callDepth int) string {
+func AddTimeAndCaller(prefix, msg string, callDepth int) string {
 	var buf strings.Builder
 
+	buf.WriteString(prefix)
 	buf.WriteString(time.Now().Format(TimeFormat))
 	buf.WriteByte(' ')
 
@@ -128,7 +128,7 @@ func Close() error {
 	atomic.StoreUint32(&initialized, 0)
 
 	if atomic.LoadUint32(&stdoutInitialize) == 1 {
-		atomic.StoreUint32(&initialized, 0)
+		atomic.StoreUint32(&stdoutInitialize, 0)
 	}
 
 	if InfoLog != nil {
@@ -233,8 +233,10 @@ func createOutput(path string) (io.WriteCloser, error) {
 }
 
 func errorSync(msg string, callDepth int) {
-	if atomic.LoadUint32(&initialized) == 1 {
-		outputError(ErrorLog, msg, callDepth)
+	if atomic.LoadUint32(&initialized) == 0 {
+		outputError(nil, msg, callDepth, errorPrefix)
+	} else {
+		outputError(ErrorLog, msg, callDepth, errorPrefix)
 	}
 }
 
@@ -265,33 +267,57 @@ func handleOptions(opts []LogOption) {
 
 func infoSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg)
+		output(nil, msg, infoPrefix)
 	} else {
-		output(InfoLog, msg)
+		output(InfoLog, msg, infoPrefix)
 	}
 }
 
-func output(writer io.Writer, msg string) {
-	buf := AddTime(msg)
+func slowSync(msg string) {
+	if atomic.LoadUint32(&initialized) == 0 {
+		output(nil, msg, slowPrefix)
+	} else {
+		output(SlowLog, msg, slowPrefix)
+	}
+}
+
+func stackSync(msg string) {
+	if atomic.LoadUint32(&initialized) == 0 {
+		output(nil, fmt.Sprintf("%s\n%s", msg, string(debug.Stack())), stackPrefix)
+	} else {
+		stackLog.Errorf("%s\n%s", msg, string(debug.Stack()))
+	}
+}
+
+func statSync(msg string) {
+	if atomic.LoadUint32(&initialized) == 0 {
+		output(nil, msg, stackPrefix)
+	} else {
+		output(StatLog, msg, stackPrefix)
+	}
+}
+
+func output(writer io.Writer, msg, prefix string) {
+	buf := AddTime(prefix, msg)
 	if writer != nil {
 		if _, err := writer.Write([]byte(buf)); err != nil {
 			log.Println(err)
 		}
 	}
-	if atomic.LoadUint32(&stdoutInitialize) == 1 {
-		log.Print(buf)
+	if atomic.LoadUint32(&stdoutInitialize) == 1 || writer == nil {
+		fmt.Print(buf)
 	}
 }
 
-func outputError(writer io.Writer, msg string, callDepth int) {
-	content := AddTimeAndCaller(msg, callDepth)
+func outputError(writer io.Writer, msg string, callDepth int, prefix string) {
+	content := AddTimeAndCaller(prefix, msg, callDepth)
 	if writer != nil {
 		if _, err := writer.Write([]byte(content)); err != nil {
 			log.Println(err)
 		}
 	}
-	if atomic.LoadUint32(&stdoutInitialize) == 1 {
-		log.Print(content)
+	if atomic.LoadUint32(&stdoutInitialize) == 1 || writer == nil {
+		fmt.Print(content)
 	}
 }
 
@@ -354,30 +380,6 @@ func setupWithVolume(c Config) error {
 	c.Path = path.Join(c.Path, c.NameSpace, hostname)
 
 	return setupWithFiles(c)
-}
-
-func slowSync(msg string) {
-	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg)
-	} else {
-		output(SlowLog, msg)
-	}
-}
-
-func stackSync(msg string) {
-	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, fmt.Sprintf("%s\n%s", msg, string(debug.Stack())))
-	} else {
-		stackLog.Errorf("%s\n%s", msg, string(debug.Stack()))
-	}
-}
-
-func statSync(msg string) {
-	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg)
-	} else {
-		output(StatLog, msg)
-	}
 }
 
 type LogWriter struct {

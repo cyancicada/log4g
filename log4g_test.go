@@ -5,10 +5,6 @@ import (
 )
 
 func TestLog4g(t *testing.T) {
-	Init(Config{
-		Path:   "logs",
-		Stdout: true,
-	})
 	InfoFormat("info ")
 	ErrorFormat("error ")
 	Stat("stat ")
