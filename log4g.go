@@ -49,9 +49,10 @@ var (
 	StatLog      io.WriteCloser
 	stackLog     *LessLogger
 
-	once        sync.Once
-	initialized uint32
-	options     logOptions
+	once             sync.Once
+	initialized      uint32
+	stdoutInitialize uint32
+	options          logOptions
 )
 
 type (
@@ -72,22 +73,14 @@ type (
 )
 
 func Init(c Config) {
-	if err := SetUp(c); err != nil {
-		log.Fatal(err)
-	}
-}
 
-func init() {
-	if err := SetUp(Config{LogMode: consoleMode}); err != nil {
+	if err := SetUp(c); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func SetUp(c Config) error {
 	switch c.LogMode {
-	case consoleMode:
-		setupWithConsole()
-		return nil
 	case varMode:
 		return setupWithVolume(c)
 	default:
@@ -133,6 +126,10 @@ func Close() error {
 	}
 
 	atomic.StoreUint32(&initialized, 0)
+
+	if atomic.LoadUint32(&stdoutInitialize) == 1 {
+		atomic.StoreUint32(&initialized, 0)
+	}
 
 	if InfoLog != nil {
 		if err := InfoLog.Close(); err != nil {
@@ -236,9 +233,7 @@ func createOutput(path string) (io.WriteCloser, error) {
 }
 
 func errorSync(msg string, callDepth int) {
-	if atomic.LoadUint32(&initialized) == 0 {
-		outputError(nil, msg, callDepth)
-	} else {
+	if atomic.LoadUint32(&initialized) == 1 {
 		outputError(ErrorLog, msg, callDepth)
 	}
 }
@@ -282,7 +277,8 @@ func output(writer io.Writer, msg string) {
 		if _, err := writer.Write([]byte(buf)); err != nil {
 			log.Println(err)
 		}
-	} else {
+	}
+	if atomic.LoadUint32(&stdoutInitialize) == 1 {
 		log.Print(buf)
 	}
 }
@@ -293,20 +289,10 @@ func outputError(writer io.Writer, msg string, callDepth int) {
 		if _, err := writer.Write([]byte(content)); err != nil {
 			log.Println(err)
 		}
-	} else {
+	}
+	if atomic.LoadUint32(&stdoutInitialize) == 1 {
 		log.Print(content)
 	}
-}
-
-func setupWithConsole() {
-	writeConsole = true
-	once.Do(func() {
-		InfoLog = NewLogWriter(log.New(os.Stdout, infoPrefix, flags))
-		ErrorLog = NewLogWriter(log.New(os.Stderr, errorPrefix, flags))
-		SlowLog = NewLogWriter(log.New(os.Stderr, slowPrefix, flags))
-		StatLog = InfoLog
-		atomic.StoreUint32(&initialized, 1)
-	})
 }
 
 func setupWithFiles(c Config) error {
@@ -351,6 +337,9 @@ func setupWithFiles(c Config) error {
 
 		stackLog = NewLessLogger(options.logStackCoolDownMills)
 		atomic.StoreUint32(&initialized, 1)
+		if c.Stdout == true {
+			atomic.StoreUint32(&stdoutInitialize, 1)
+		}
 	})
 
 	return err

@@ -2,6 +2,7 @@ package log4g
 
 type Config struct {
 	NameSpace           string `json:",optional"`
+	Stdout              bool   `json:"stdout,default=true"`
 	LogMode             string `json:",options=regular|console|volume,default=regular"`
 	Path                string `json:",default=logs"`
 	Compress            bool   `json:",optional"`

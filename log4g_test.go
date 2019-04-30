@@ -6,9 +6,8 @@ import (
 
 func TestLog4g(t *testing.T) {
 	Init(Config{
-		LogMode:   varMode,
-		Path:      "logs",
-		NameSpace: "knowing",
+		Path:   "logs",
+		Stdout: true,
 	})
 	InfoFormat("info ")
 	ErrorFormat("error ")
