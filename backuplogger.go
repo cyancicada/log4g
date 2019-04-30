@@ -30,6 +30,7 @@ type (
 		MarkRotated()
 		OutdatedFiles() []string
 		ShallRotate() bool
+		GetPrefix() string
 	}
 	Placeholder  struct{}
 	BackupLogger struct {
@@ -40,6 +41,7 @@ type (
 		done      chan Placeholder
 		rule      BackupRule
 		compress  bool
+		stdout    bool
 		keepDays  int
 		waitGroup sync.WaitGroup
 		closeOnce sync.Once
@@ -48,24 +50,30 @@ type (
 	DailyBackupRule struct {
 		rotatedTime string
 		filename    string
+		prefix      string
 		delimiter   string
 		days        int
 		gzip        bool
 	}
 )
 
-func DefaultBackupRule(filename, delimiter string, days int, gzip bool) BackupRule {
+func DefaultBackupRule(filename, prefix, delimiter string, days int, gzip bool) BackupRule {
 	return &DailyBackupRule{
 		rotatedTime: getNowDate(),
 		filename:    filename,
 		delimiter:   delimiter,
 		days:        days,
+		prefix:      prefix,
 		gzip:        gzip,
 	}
 }
 
 func (r *DailyBackupRule) BackupFileName() string {
 	return fmt.Sprintf("%s%s%s", r.filename, r.delimiter, getNowDate())
+}
+
+func (r *DailyBackupRule) GetPrefix() string {
+	return r.prefix
 }
 
 func (r *DailyBackupRule) MarkRotated() {
@@ -115,12 +123,13 @@ func (r *DailyBackupRule) ShallRotate() bool {
 	return len(r.rotatedTime) > 0 && getNowDate() != r.rotatedTime
 }
 
-func NewLogger(filename string, rule BackupRule, compress bool) (*BackupLogger, error) {
+func NewLogger(filename string, stdout bool, rule BackupRule, compress bool) (*BackupLogger, error) {
 	l := &BackupLogger{
 		filename: filename,
 		channel:  make(chan []byte, bufferSize),
 		done:     make(chan Placeholder),
 		rule:     rule,
+		stdout:   stdout,
 		compress: compress,
 	}
 	if err := l.init(); err != nil {
@@ -149,11 +158,15 @@ func (l *BackupLogger) Close() error {
 }
 
 func (l *BackupLogger) Write(data []byte) (int, error) {
+	logBytes := append([]byte(l.rule.GetPrefix()), data...)
 	select {
-	case l.channel <- data:
-		return len(data), nil
+	case l.channel <- logBytes:
+		if l.stdout {
+			fmt.Print(string(logBytes))
+		}
+		return len(logBytes), nil
 	case <-l.done:
-		log.Println(string(data))
+		stdoutErrOutput(l.rule.GetPrefix(), string(logBytes), 1)
 		return 0, ErrLogFileClosed
 	}
 }

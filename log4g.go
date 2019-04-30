@@ -28,10 +28,12 @@ const (
 
 	defaultHostName = "log4g"
 
-	infoPrefix          = "[INFO] "
-	errorPrefix         = "[ERROR] "
-	slowPrefix          = "[SLOW] "
-	stackPrefix         = "[STACK] "
+	infoPrefix  = "[INFO] "
+	errorPrefix = "[ERROR] "
+	slowPrefix  = "[SLOW] "
+	stackPrefix = "[STACK] "
+	statePrefix = "[STATE] "
+
 	backupFileDelimiter = "-"
 	callerInnerDepth    = 5
 )
@@ -48,10 +50,9 @@ var (
 	StatLog      io.WriteCloser
 	stackLog     *LessLogger
 
-	once             sync.Once
-	initialized      uint32
-	stdoutInitialize uint32
-	options          logOptions
+	once        sync.Once
+	initialized uint32
+	options     logOptions
 )
 
 type (
@@ -86,8 +87,8 @@ func SetUp(c Config) error {
 	}
 }
 
-func AddTime(prefix, msg string) string {
-	now := []byte(prefix + time.Now().Format(TimeFormat))
+func AddTime(msg string) string {
+	now := []byte(time.Now().Format(TimeFormat))
 	msgBytes := []byte(msg)
 	buf := make([]byte, len(now)+1+len(msgBytes))
 	n := copy(buf, now)
@@ -97,10 +98,8 @@ func AddTime(prefix, msg string) string {
 	return string(buf)
 }
 
-func AddTimeAndCaller(prefix, msg string, callDepth int) string {
+func AddTimeAndCaller(msg string, callDepth int) string {
 	var buf strings.Builder
-
-	buf.WriteString(prefix)
 	buf.WriteString(time.Now().Format(TimeFormat))
 	buf.WriteByte(' ')
 
@@ -125,10 +124,6 @@ func Close() error {
 	}
 
 	atomic.StoreUint32(&initialized, 0)
-
-	if atomic.LoadUint32(&stdoutInitialize) == 1 {
-		atomic.StoreUint32(&stdoutInitialize, 0)
-	}
 
 	if InfoLog != nil {
 		if err := InfoLog.Close(); err != nil {
@@ -223,20 +218,12 @@ func WithGzip() LogOption {
 	}
 }
 
-func createOutput(path string) (io.WriteCloser, error) {
+func createOutput(path, prefix string, stdout bool) (io.WriteCloser, error) {
 	if len(path) == 0 {
 		return nil, ErrLogPathNotSet
 	}
-	return NewLogger(path, DefaultBackupRule(path, backupFileDelimiter, options.keepDays,
+	return NewLogger(path, stdout, DefaultBackupRule(path, prefix, backupFileDelimiter, options.keepDays,
 		options.gzipEnabled), options.gzipEnabled)
-}
-
-func errorSync(msg string, callDepth int) {
-	if atomic.LoadUint32(&initialized) == 0 {
-		outputError(nil, msg, callDepth, errorPrefix)
-	} else {
-		outputError(ErrorLog, msg, callDepth, errorPrefix)
-	}
 }
 
 func getCaller(callDepth int) string {
@@ -266,23 +253,31 @@ func handleOptions(opts []LogOption) {
 
 func infoSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg, infoPrefix)
+		stdoutOutput(infoPrefix, msg)
 	} else {
-		output(InfoLog, msg, infoPrefix)
+		output(InfoLog, msg)
+	}
+}
+
+func errorSync(msg string, callDepth int) {
+	if atomic.LoadUint32(&initialized) == 0 {
+		stdoutErrOutput(slowPrefix, msg, callDepth)
+	} else {
+		outputError(ErrorLog, msg, callDepth)
 	}
 }
 
 func slowSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg, slowPrefix)
+		stdoutOutput(slowPrefix, msg)
 	} else {
-		output(SlowLog, msg, slowPrefix)
+		output(SlowLog, msg)
 	}
 }
 
 func stackSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, fmt.Sprintf("%s\n%s", msg, string(debug.Stack())), stackPrefix)
+		stdoutOutput(stackPrefix, fmt.Sprintf("%s\n%s", msg, string(debug.Stack())))
 	} else {
 		stackLog.Errorf("%s\n%s", msg, string(debug.Stack()))
 	}
@@ -290,33 +285,36 @@ func stackSync(msg string) {
 
 func statSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		output(nil, msg, stackPrefix)
+		stdoutOutput(statePrefix, msg)
 	} else {
-		output(StatLog, msg, stackPrefix)
+		output(StatLog, msg)
 	}
 }
 
-func output(writer io.Writer, msg, prefix string) {
-	buf := AddTime(prefix, msg)
+func stdoutOutput(prefix, msg string) {
+	fmt.Print(prefix + AddTime(msg))
+}
+
+func stdoutErrOutput(prefix, msg string, callDepth int) {
+	fmt.Print(prefix + AddTimeAndCaller(msg, callDepth))
+}
+
+func output(writer io.Writer, msg string) {
+	buf := AddTime(msg)
 	if writer != nil {
 		if _, err := writer.Write([]byte(buf)); err != nil {
 			log.Println(err)
 		}
 	}
-	if atomic.LoadUint32(&stdoutInitialize) == 1 || writer == nil {
-		fmt.Print(buf)
-	}
+
 }
 
-func outputError(writer io.Writer, msg string, callDepth int, prefix string) {
-	content := AddTimeAndCaller(prefix, msg, callDepth)
+func outputError(writer io.Writer, msg string, callDepth int) {
+	content := AddTimeAndCaller(msg, callDepth)
 	if writer != nil {
 		if _, err := writer.Write([]byte(content)); err != nil {
 			log.Println(err)
 		}
-	}
-	if atomic.LoadUint32(&stdoutInitialize) == 1 || writer == nil {
-		fmt.Print(content)
 	}
 }
 
@@ -344,27 +342,24 @@ func setupWithFiles(c Config) error {
 	once.Do(func() {
 		handleOptions(opts)
 
-		if InfoLog, err = createOutput(accessFile); err != nil {
+		if InfoLog, err = createOutput(accessFile, infoPrefix, c.Stdout); err != nil {
 			return
 		}
 
-		if ErrorLog, err = createOutput(errorFile); err != nil {
+		if ErrorLog, err = createOutput(errorFile, errorPrefix, c.Stdout); err != nil {
 			return
 		}
 
-		if SlowLog, err = createOutput(slowFile); err != nil {
+		if SlowLog, err = createOutput(slowFile, slowPrefix, c.Stdout); err != nil {
 			return
 		}
 
-		if StatLog, err = createOutput(statFile); err != nil {
+		if StatLog, err = createOutput(statFile, stackPrefix, c.Stdout); err != nil {
 			return
 		}
 
 		stackLog = NewLessLogger(options.logStackCoolDownMills)
 		atomic.StoreUint32(&initialized, 1)
-		if c.Stdout == true {
-			atomic.StoreUint32(&stdoutInitialize, 1)
-		}
 	})
 
 	return err
