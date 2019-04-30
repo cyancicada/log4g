@@ -77,6 +77,12 @@ func Init(c Config) {
 	}
 }
 
+func init() {
+	if err := SetUp(Config{LogMode: consoleMode}); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func SetUp(c Config) error {
 	switch c.LogMode {
 	case consoleMode:
