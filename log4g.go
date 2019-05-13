@@ -261,7 +261,7 @@ func infoSync(msg string) {
 
 func errorSync(msg string, callDepth int) {
 	if atomic.LoadUint32(&initialized) == 0 {
-		stdoutErrOutput(slowPrefix, msg, callDepth)
+		stdoutErrOutput(errorPrefix, msg, callDepth)
 	} else {
 		outputError(ErrorLog, msg, callDepth)
 	}
