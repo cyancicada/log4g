@@ -1,6 +1,7 @@
 package log4g
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,6 +40,7 @@ const (
 )
 
 var (
+	ErrMissingValue       = errors.New("(MISSING)")
 	ErrLogPathNotSet      = errors.New("log path must be set")
 	ErrLogNotInitialized  = errors.New("log not initialized")
 	ErrLogNameSpaceNotSet = errors.New("log service name must be set")
@@ -69,6 +71,7 @@ type (
 		ErrorFormat(string, ...interface{})
 		Info(...interface{})
 		InfoFormat(string, ...interface{})
+		Log(keyValues ...interface{}) error
 	}
 )
 
@@ -174,6 +177,10 @@ func Info(v ...interface{}) {
 
 func InfoFormat(format string, v ...interface{}) {
 	infoSync(fmt.Sprintf(fmt.Sprintf("%s\n", format), v...))
+}
+
+func Log(keyValues ...interface{}) error {
+	return json.NewEncoder(InfoLog).Encode(keyValues)
 }
 
 func Server(v ...interface{}) {
