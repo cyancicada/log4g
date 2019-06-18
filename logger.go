@@ -1,6 +1,7 @@
 package log4g
 
 import (
+	"encoding/json"
 	"sync/atomic"
 	"time"
 )
@@ -22,6 +23,9 @@ func (logger *LessLogger) Error(v ...interface{}) {
 	logger.logOrDiscard(func() {
 		Error(v...)
 	})
+}
+func (logger *LessLogger) Log(keyValues ...interface{}) error {
+	return json.NewEncoder(InfoLog).Encode(keyValues)
 }
 
 func (logger *LessLogger) Errorf(format string, v ...interface{}) {

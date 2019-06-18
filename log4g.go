@@ -1,7 +1,6 @@
 package log4g
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,7 +39,6 @@ const (
 )
 
 var (
-	ErrMissingValue       = errors.New("(MISSING)")
 	ErrLogPathNotSet      = errors.New("log path must be set")
 	ErrLogNotInitialized  = errors.New("log not initialized")
 	ErrLogNameSpaceNotSet = errors.New("log service name must be set")
@@ -50,7 +48,7 @@ var (
 	ErrorLog     io.WriteCloser
 	SlowLog      io.WriteCloser
 	StatLog      io.WriteCloser
-	stackLog     *LessLogger
+	StackLog     *LessLogger
 
 	once        sync.Once
 	initialized uint32
@@ -71,7 +69,6 @@ type (
 		ErrorFormat(string, ...interface{})
 		Info(...interface{})
 		InfoFormat(string, ...interface{})
-		Log(keyValues ...interface{}) error
 	}
 )
 
@@ -179,10 +176,6 @@ func InfoFormat(format string, v ...interface{}) {
 	infoSync(fmt.Sprintf(fmt.Sprintf("%s\n", format), v...))
 }
 
-func Log(keyValues ...interface{}) error {
-	return json.NewEncoder(InfoLog).Encode(keyValues)
-}
-
 func Server(v ...interface{}) {
 	stackSync(fmt.Sprint(v...))
 }
@@ -286,7 +279,7 @@ func stackSync(msg string) {
 	if atomic.LoadUint32(&initialized) == 0 {
 		stdoutOutput(stackPrefix, fmt.Sprintf("%s\n%s", msg, string(debug.Stack())))
 	} else {
-		stackLog.Errorf("%s\n%s", msg, string(debug.Stack()))
+		StackLog.Errorf("%s\n%s", msg, string(debug.Stack()))
 	}
 }
 
@@ -365,7 +358,7 @@ func setupWithFiles(c Config) error {
 			return
 		}
 
-		stackLog = NewLessLogger(options.logStackCoolDownMills)
+		StackLog = NewLessLogger(options.logStackCoolDownMills)
 		atomic.StoreUint32(&initialized, 1)
 	})
 
